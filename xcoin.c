@@ -5,34 +5,18 @@
 #include <string.h>
 #include <stdint.h>
 
-//--
-#include "x5/luffa_for_sse2.h" //sse2 opt
-//----
-#include "x5/cubehash_sse2.h" //sse2 opt
-//--------------------------
-#include "x5/sph_shavite.h"
-//-------
-//#include "x5/sph_simd.h"
-//-----simd vect128---------
-#include "x5/vect128/nist.h"
-//-----------
-#include "x5/sph_echo.h"
-//----
-#include "x6/blake.c"
-#include "x6/bmw.c"
-#include "x6/keccak.c"
-#include "x6/skein.c"
-#include "x6/jh_sse2_opt64.h"
-//#include "groestl.c"
 
-#if 1
-#include "x6/grso.c"
-#ifndef PROFILERUN
-#include "x6/grso-asm.c"
-#endif
-#else
-#include "x6/grss_api.h"
-#endif
+#include "x11/sph_blake.h"
+#include "x11/sph_bmw.h"
+#include "x11/sph_groestl.h"
+#include "x11/sph_jh.h"
+#include "x11/sph_keccak.h"
+#include "x11/sph_skein.h"
+#include "x11/sph_luffa.h"
+#include "x11/sph_cubehash.h"
+#include "x11/sph_shavite.h"
+#include "x11/sph_simd.h"
+#include "x11/sph_echo.h"
 
 /*define data alignment for different C compilers*/
 #if defined(__GNUC__)
@@ -41,119 +25,79 @@
       #define DATA_ALIGN16(x) __declspec(align(16)) x
 #endif
 
-typedef struct {
-	sph_shavite512_context  shavite1;
-	//sph_simd512_context		simd1;
-	sph_echo512_context		echo1;
-} Xhash_context_holder;
-
-Xhash_context_holder base_contexts;
-hashState base_context_luffa;
-cubehashParam base_context_cubehash;
-
 void init_Xhash_contexts()
 {
-   //---luffa---
-  init_luffa(&base_context_luffa,512);
-  //--ch sse2---
-  cubehashInit(&base_context_cubehash,512,16,32);
-  //-------
-  sph_shavite512_init(&base_contexts.shavite1);
-  //---simd---
-  //sph_simd512_init(&base_contexts.simd1); 
-  //--------------
-  sph_echo512_init(&base_contexts.echo1);
+
 }
 
-inline void Xhash(void *state, const void *input)
+void Hash9(void *output, const void *input)
 {
-    
-    DATA_ALIGN16(unsigned char hashbuf[128]);
-    DATA_ALIGN16(size_t hashptr);
-    DATA_ALIGN16(sph_u64 hashctA);
-    DATA_ALIGN16(sph_u64 hashctB);
+    sph_blake512_context     ctx_blake;
+    sph_bmw512_context       ctx_bmw;
+    sph_groestl512_context   ctx_groestl;
+    sph_jh512_context        ctx_jh;
+    sph_keccak512_context    ctx_keccak;
+    sph_skein512_context     ctx_skein;
+    sph_luffa512_context     ctx_luffa;
+    sph_cubehash512_context  ctx_cubehash;
+    sph_shavite512_context   ctx_shavite;
+    sph_simd512_context      ctx_simd;
+    sph_echo512_context      ctx_echo;
+    static unsigned char pblank[1];
 
 
-    grsoState sts_grs;
-   
-    int speedrun[] = {0, 1, 3, 4, 6, 7 };
-    int i;
-    DATA_ALIGN16(unsigned char hash[128]);
-    /* proably not needed */
-    memset(hash, 0, 128);
-// blake1-bmw2-grs3-skein4-jh5-keccak6-luffa7-cubehash8-shavite9-simd10-echo11
-	//---blake1---
-    DECL_BLK;
-    BLK_I;
-    BLK_W;
-    BLK_C;
-//---bmw2---
-	DECL_BMW;
-	BMW_I;
-	BMW_U;
-	#define M(x)    sph_dec64le_aligned(data + 8 * (x))
-	#define H(x)    (h[x])
-	#define dH(x)   (dh[x])
-            BMW_C;
-	#undef M
-	#undef H
-	#undef dH
-//---grs3 ---
-	GRS_I;
-	GRS_U;
-	GRS_C;
-//---skein4---          
-	DECL_SKN;
-	SKN_I;
-	SKN_U;
-	SKN_C; 
-//---jh5---            
-	DECL_JH;
-	JH_H;
-//---keccak6---       
-	DECL_KEC;
-	KEC_I;
-	KEC_U;
-	KEC_C;
+    uint32_t hashA[16], hashB[16];
 
+    sph_blake512_init(&ctx_blake);
+    sph_blake512 (&ctx_blake, input, 80);
+    sph_blake512_close(&ctx_blake, hashA);
 
- asm volatile ("emms");
- 
-Xhash_context_holder ctx;
-hashState			 ctx_luffa;
-cubehashParam		 ctx_cubehash;
-//---local simd var ---
-hashState_sd *     ctx_simd1;
+    sph_bmw512_init(&ctx_bmw);
+    sph_bmw512 (&ctx_bmw, hashA, 64);
+    sph_bmw512_close(&ctx_bmw, hashB);
 
- uint32_t hashA[16], hashB[16];	
- memcpy(&ctx, &base_contexts, sizeof(base_contexts));
-	memcpy(&ctx_luffa,&base_context_luffa,sizeof(hashState));
-	memcpy(&ctx_cubehash,&base_context_cubehash,sizeof(cubehashParam));
-		    
-    //--- luffa7	
-	update_luffa(&ctx_luffa,(const BitSequence*)hash,512);
-	final_luffa(&ctx_luffa,(BitSequence*)hashA);	
-	//---cubehash---    
-	cubehashUpdate(&ctx_cubehash,(const byte*)hashA,64);
-	cubehashDigest(&ctx_cubehash,(byte*)hashB);
-	//---shavite---
-    sph_shavite512 (&ctx.shavite1, hashB, 64);   
-    sph_shavite512_close(&ctx.shavite1, hashA);
-	//sph_simd512 (&ctx.simd1, hashA, 64);   
-    // sph_simd512_close(&ctx.simd1, hashB); 
-    //-------simd512 vect128 --------------	
-	ctx_simd1=malloc(sizeof(hashState_sd));
-	Init(ctx_simd1,512);
-	Update(ctx_simd1,(const BitSequence *)hashA,512);
-	Final(ctx_simd1,(BitSequence *)hashB);  
-	free(ctx_simd1->buffer);
-	free(ctx_simd1->A);
-	free(ctx_simd1);
-	//---echo---
-	sph_echo512 (&ctx.echo1, hashB, 64);   
-    sph_echo512_close(&ctx.echo1, hashA); 
- 
-    memcpy(state, hashA, 32);
+    sph_groestl512_init(&ctx_groestl);
+    sph_groestl512 (&ctx_groestl, hashB, 64);
+    sph_groestl512_close(&ctx_groestl, hashA);
+
+    sph_skein512_init(&ctx_skein);
+    sph_skein512 (&ctx_skein, hashA, 64);
+    sph_skein512_close(&ctx_skein, hashB);
+
+    sph_jh512_init(&ctx_jh);
+    sph_jh512 (&ctx_jh, hashB, 64);
+    sph_jh512_close(&ctx_jh, hashA);
+
+    sph_keccak512_init(&ctx_keccak);
+    sph_keccak512 (&ctx_keccak, hashA, 64);
+    sph_keccak512_close(&ctx_keccak, hashB);
+
+    sph_luffa512_init(&ctx_luffa);
+    sph_luffa512 (&ctx_luffa, hashB, 64);
+    sph_luffa512_close(&ctx_luffa, hashA);
+
+    sph_cubehash512_init(&ctx_cubehash);
+    sph_cubehash512 (&ctx_cubehash, hashA, 64);
+    sph_cubehash512_close(&ctx_cubehash, hashB);
+
+    sph_shavite512_init(&ctx_shavite);
+    sph_shavite512(&ctx_shavite, hashB, 64);
+    sph_shavite512_close(&ctx_shavite, hashA);
+
+    sph_simd512_init(&ctx_simd);
+    sph_simd512 (&ctx_simd, hashA, 64);
+    sph_simd512_close(&ctx_simd, hashB);
+
+    sph_echo512_init(&ctx_echo);
+    sph_echo512 (&ctx_echo, hashB, 64);
+    sph_echo512_close(&ctx_echo, hashA);
+
+//    for (int kk = 0; kk < 8; kk++)
+//    {
+//            be32enc(&((uint32_t*)output)[kk], ((uint32_t*)hashA)[kk]);
+//    };
+    memcpy(output, hashA, 32);
+
 }
 
 int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
@@ -163,7 +107,7 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
         const uint32_t first_nonce = pdata[19];
         const uint32_t Htarg = ptarget[7];
 
-        uint32_t hash64[8] __attribute__((aligned(32)));
+        uint32_t hash64[8];// __attribute__((aligned(32)));
         uint32_t endiandata[32];
         
         
@@ -173,10 +117,10 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
                 be32enc(&endiandata[kk], ((uint32_t*)pdata)[kk]);
         };
         if (ptarget[7]==0) {
-                do {
+                do { //1
                         pdata[19] = ++n;
                         be32enc(&endiandata[19], n);
-                        Xhash(hash64, &endiandata);
+                        Hash9(hash64, &endiandata);
                         if (((hash64[7]&0xFFFFFFFF)==0) &&
                                         fulltest(hash64, ptarget)) {
                                 *hashes_done = n - first_nonce + 1;
@@ -186,10 +130,10 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
         }
         else if (ptarget[7]<=0xF)
         {
-                do {
+    			do { //2
                         pdata[19] = ++n;
                         be32enc(&endiandata[19], n);
-                        Xhash(hash64, &endiandata);
+                        Hash9(hash64, &endiandata);
                         if (((hash64[7]&0xFFFFFFF0)==0) &&
                                         fulltest(hash64, ptarget)) {
                                 *hashes_done = n - first_nonce + 1;
@@ -199,10 +143,10 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
         }
         else if (ptarget[7]<=0xFF)
         {
-                do {
+                do { //3
                         pdata[19] = ++n;
                         be32enc(&endiandata[19], n);
-                        Xhash(hash64, &endiandata);
+                        Hash9(hash64, &endiandata);
                         if (((hash64[7]&0xFFFFFF00)==0) &&
                                         fulltest(hash64, ptarget)) {
                                 *hashes_done = n - first_nonce + 1;
@@ -212,10 +156,10 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
         }
         else if (ptarget[7]<=0xFFF)
         {
-                do {
+                do { //4
                         pdata[19] = ++n;
                         be32enc(&endiandata[19], n);
-                        Xhash(hash64, &endiandata);
+                        Hash9(hash64, &endiandata);
                         if (((hash64[7]&0xFFFFF000)==0) &&
                                         fulltest(hash64, ptarget)) {
                                 *hashes_done = n - first_nonce + 1;
@@ -226,14 +170,14 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
         }
         else if (ptarget[7]<=0xFFFF)
         {
-                do {
+                do { //5
                         pdata[19] = ++n;
                         be32enc(&endiandata[19], n);
-                        Xhash(hash64, &endiandata);
+                        Hash9(hash64, &endiandata);
                         if (((hash64[7]&0xFFFF0000)==0) &&
                                         fulltest(hash64, ptarget)) {
                                 *hashes_done = n - first_nonce + 1;
-                                return true;
+                                return 1;
                         }
                 } while (n < max_nonce && !work_restart[thr_id].restart);        
 
@@ -243,7 +187,7 @@ int scanhash_X(int thr_id, uint32_t *pdata, const uint32_t *ptarget,
                 do {
                         pdata[19] = ++n;
                         be32enc(&endiandata[19], n);
-                        Xhash(hash64, &endiandata);
+                        Hash9(hash64, &endiandata);
                         if (fulltest(hash64, ptarget)) {
                                 *hashes_done = n - first_nonce + 1;
                                 return true;
