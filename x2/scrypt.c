@@ -378,11 +378,10 @@ static inline void PBKDF2_SHA256_128_32_8way(uint32_t *tstate,
 #endif /* HAVE_SHA256_8WAY */
 
 
-#if defined(__x86_64__)
+#if defined(__x86_64__BAD__)
 
 #define SCRYPT_MAX_WAYS 12
 #define HAVE_SCRYPT_3WAY 1
-int scrypt_best_throughput();
 void scrypt_core(uint32_t *X, uint32_t *V);
 void scrypt_core_3way(uint32_t *X, uint32_t *V);
 #if defined(USE_AVX2)
@@ -392,7 +391,7 @@ void scrypt_core_3way(uint32_t *X, uint32_t *V);
 void scrypt_core_6way(uint32_t *X, uint32_t *V);
 #endif
 
-#elif defined(__i386__)
+#elif defined(__i386__BAD__)
 
 #define SCRYPT_MAX_WAYS 4
 #define scrypt_best_throughput() 1
@@ -703,13 +702,13 @@ int scanhash_scrypt(int thr_id, uint32_t *pdata,
 	uint32_t midstate[8];
 	uint32_t n = pdata[19] - 1;
 	const uint32_t Htarg = ptarget[7];
-	int throughput = scrypt_best_throughput();
+	int throughput = 1;
 	int i;
 	
-#ifdef HAVE_SHA256_4WAY
-	if (sha256_use_4way())
-		throughput *= 4;
-#endif
+//#ifdef HAVE_SHA256_4WAY
+//	if (sha256_use_4way())
+//		throughput *= 4;
+//#endif
 	
 	for (i = 0; i < throughput; i++)
 		memcpy(data + i * 20, pdata, 80);
@@ -721,26 +720,26 @@ int scanhash_scrypt(int thr_id, uint32_t *pdata,
 		for (i = 0; i < throughput; i++)
 			data[i * 20 + 19] = ++n;
 		
-#if defined(HAVE_SHA256_4WAY)
-		if (throughput == 4)
-			scrypt_1024_1_1_256_4way(data, hash, midstate, scratchbuf);
-		else
-#endif
-#if defined(HAVE_SCRYPT_3WAY) && defined(HAVE_SHA256_4WAY)
-		if (throughput == 12)
-			scrypt_1024_1_1_256_12way(data, hash, midstate, scratchbuf);
-		else
-#endif
-#if defined(HAVE_SCRYPT_6WAY)
-		if (throughput == 24)
-			scrypt_1024_1_1_256_24way(data, hash, midstate, scratchbuf);
-		else
-#endif
-#if defined(HAVE_SCRYPT_3WAY)
-		if (throughput == 3)
-			scrypt_1024_1_1_256_3way(data, hash, midstate, scratchbuf);
-		else
-#endif
+//#if defined(HAVE_SHA256_4WAY)
+//		if (throughput == 4)
+//			scrypt_1024_1_1_256_4way(data, hash, midstate, scratchbuf);
+//		else
+//#endif
+//#if defined(HAVE_SCRYPT_3WAY) && defined(HAVE_SHA256_4WAY)
+//		if (throughput == 12)
+//			scrypt_1024_1_1_256_12way(data, hash, midstate, scratchbuf);
+//		else
+//#endif
+//#if defined(HAVE_SCRYPT_6WAY)
+//		if (throughput == 24)
+//			scrypt_1024_1_1_256_24way(data, hash, midstate, scratchbuf);
+//		else
+//#endif
+//#if defined(HAVE_SCRYPT_3WAY)
+//		if (throughput == 3)
+//			scrypt_1024_1_1_256_3way(data, hash, midstate, scratchbuf);
+//		else
+//#endif
 		scrypt_1024_1_1_256(data, hash, midstate, scratchbuf);
 		
 		for (i = 0; i < throughput; i++) {
